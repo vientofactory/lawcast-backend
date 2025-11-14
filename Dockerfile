@@ -22,7 +22,7 @@ COPY package*.json ./
 # Install all dependencies including devDependencies
 RUN npm ci
 
-# Copy source code including .env file
+# Copy source code
 COPY . .
 
 # Build the application
