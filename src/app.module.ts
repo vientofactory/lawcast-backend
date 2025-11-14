@@ -8,8 +8,8 @@ import { ApiController } from './controllers/api.controller';
 import { WebhookService } from './services/webhook.service';
 import { CrawlingService } from './services/crawling.service';
 import { NotificationService } from './services/notification.service';
+import { CacheService } from './services/cache.service';
 import { Webhook } from './entities/webhook.entity';
-import { LegislativeNotice } from './entities/legislative-notice.entity';
 
 @Module({
   imports: [
@@ -19,13 +19,19 @@ import { LegislativeNotice } from './entities/legislative-notice.entity';
     TypeOrmModule.forRoot({
       type: 'sqlite',
       database: 'lawcast.db',
-      entities: [Webhook, LegislativeNotice],
+      entities: [Webhook],
       synchronize: true,
     }),
-    TypeOrmModule.forFeature([Webhook, LegislativeNotice]),
+    TypeOrmModule.forFeature([Webhook]),
     ScheduleModule.forRoot(),
   ],
   controllers: [AppController, ApiController],
-  providers: [AppService, WebhookService, CrawlingService, NotificationService],
+  providers: [
+    AppService,
+    WebhookService,
+    CrawlingService,
+    NotificationService,
+    CacheService,
+  ],
 })
 export class AppModule {}

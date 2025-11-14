@@ -1,8 +1,10 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { Logger } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const logger = new Logger('Bootstrap');
 
   // CORS 설정
   app.enableCors({
@@ -16,6 +18,6 @@ async function bootstrap() {
   const port = process.env.PORT || 3001;
   await app.listen(port);
 
-  console.log(`🚀 LawCast Backend is running on: http://localhost:${port}`);
+  logger.log(`LawCast Backend is running on: http://localhost:${port}`);
 }
 bootstrap();

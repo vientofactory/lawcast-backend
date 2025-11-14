@@ -9,6 +9,7 @@ import {
   UsePipes,
   HttpStatus,
   HttpCode,
+  HttpException,
 } from '@nestjs/common';
 import { WebhookService } from '../services/webhook.service';
 import { CrawlingService } from '../services/crawling.service';
@@ -29,17 +30,32 @@ export class ApiController {
   async createWebhook(@Body() createWebhookDto: CreateWebhookDto) {
     const webhook = await this.webhookService.create(createWebhookDto);
 
-    // 웹훅 테스트 전송
-    await this.notificationService.testWebhook(webhook.url);
+    // 웹훅 테스트 전송 및 실패 체크
+    const testResult = await this.notificationService.testWebhook(webhook.url);
+
+    if (!testResult.success && testResult.shouldDelete) {
+      // 테스트 실패시 자동 삭제
+      await this.webhookService.remove(webhook.id);
+      throw new HttpException(
+        'Webhook test failed - invalid or inaccessible webhook URL',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
 
     return {
       success: true,
-      message: 'Webhook registered successfully',
+      message: testResult.success
+        ? 'Webhook registered and tested successfully'
+        : 'Webhook registered but test failed (temporary error)',
       data: {
         id: webhook.id,
         url: webhook.url,
         description: webhook.description,
         createdAt: webhook.createdAt,
+      },
+      testResult: {
+        success: testResult.success,
+        error: testResult.error?.message || null,
       },
     };
   }
@@ -75,10 +91,26 @@ export class ApiController {
 
   @Get('notices/recent')
   async getRecentNotices() {
-    const notices = await this.crawlingService.getRecentNotices(20);
+    const notices = this.crawlingService.getRecentNotices(20);
     return {
       success: true,
       data: notices,
+    };
+  }
+
+  @Get('stats')
+  async getStats() {
+    const [webhookStats, cacheInfo] = await Promise.all([
+      this.webhookService.getStats(),
+      this.crawlingService.getCacheInfo(),
+    ]);
+
+    return {
+      success: true,
+      data: {
+        webhooks: webhookStats,
+        cache: cacheInfo,
+      },
     };
   }
 

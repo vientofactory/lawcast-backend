@@ -1,6 +1,6 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { Webhook } from '../entities/webhook.entity';
 import { CreateWebhookDto } from '../dto/create-webhook.dto';
 
@@ -53,6 +53,40 @@ export class WebhookService {
     const webhook = await this.findOne(id);
     webhook.isActive = false;
     await this.webhookRepository.save(webhook);
+  }
+
+  /**
+   * 실패한 웹훅들을 배치로 비활성화
+   */
+  async removeFailedWebhooks(webhookIds: number[]): Promise<void> {
+    if (webhookIds.length === 0) {
+      return;
+    }
+
+    await this.webhookRepository.update(
+      { id: In(webhookIds) },
+      { isActive: false },
+    );
+  }
+
+  /**
+   * 통계 정보 조회
+   */
+  async getStats(): Promise<{
+    total: number;
+    active: number;
+    inactive: number;
+  }> {
+    const [total, active] = await Promise.all([
+      this.webhookRepository.count(),
+      this.webhookRepository.count({ where: { isActive: true } }),
+    ]);
+
+    return {
+      total,
+      active,
+      inactive: total - active,
+    };
   }
 
   private async verifyRecaptcha(token: string): Promise<void> {

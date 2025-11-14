@@ -1,93 +1,88 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PalCrawl, type ITableData } from 'pal-crawl';
-import { LegislativeNotice } from '../entities/legislative-notice.entity';
 import { WebhookService } from './webhook.service';
 import { NotificationService } from './notification.service';
+import { CacheService } from './cache.service';
 
 @Injectable()
 export class CrawlingService {
   private readonly logger = new Logger(CrawlingService.name);
+  private isProcessing = false;
 
   constructor(
-    @InjectRepository(LegislativeNotice)
-    private noticeRepository: Repository<LegislativeNotice>,
     private webhookService: WebhookService,
     private notificationService: NotificationService,
+    private cacheService: CacheService,
   ) {}
 
   @Cron(CronExpression.EVERY_10_MINUTES)
   async handleCron() {
+    if (this.isProcessing) {
+      this.logger.warn(
+        'Previous crawling process is still running, skipping...',
+      );
+      return;
+    }
+
     this.logger.log('Starting legislative notice check...');
+    this.isProcessing = true;
 
     try {
-      const palCrawl = new PalCrawl();
-      const newData = await palCrawl.get();
-
-      if (!newData || newData.length === 0) {
-        this.logger.warn('No data received from crawler');
-        return;
-      }
-
-      const newNotices = await this.findNewNotices(newData);
-
-      if (newNotices.length > 0) {
-        this.logger.log(`Found ${newNotices.length} new notices`);
-        await this.saveNewNotices(newNotices);
-        await this.sendNotifications(newNotices);
-      } else {
-        this.logger.log('No new notices found');
-      }
+      await this.performCrawlingAndNotification();
     } catch (error) {
       this.logger.error('Error during crawling process', error);
+    } finally {
+      this.isProcessing = false;
     }
   }
 
   async manualCheck(): Promise<ITableData[]> {
+    if (this.isProcessing) {
+      throw new Error('Crawling process is already running');
+    }
+
     this.logger.log('Manual check initiated');
+    this.isProcessing = true;
 
+    try {
+      return await this.performCrawlingAndNotification();
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+
+  /**
+   * 크롤링과 알림을 수행하는 메인 로직
+   */
+  private async performCrawlingAndNotification(): Promise<ITableData[]> {
     const palCrawl = new PalCrawl();
-    const data = await palCrawl.get();
+    const crawledData = await palCrawl.get();
 
-    const newNotices = await this.findNewNotices(data);
+    if (!crawledData || crawledData.length === 0) {
+      this.logger.warn('No data received from crawler');
+      return [];
+    }
+
+    // 캐시 업데이트
+    this.cacheService.updateCache(crawledData);
+
+    // 새로운 입법예고 찾기
+    const newNotices = this.cacheService.findNewNotices(crawledData);
 
     if (newNotices.length > 0) {
-      await this.saveNewNotices(newNotices);
+      this.logger.log(`Found ${newNotices.length} new notices`);
       await this.sendNotifications(newNotices);
+    } else {
+      this.logger.log('No new notices found');
     }
 
     return newNotices;
   }
 
-  private async findNewNotices(
-    crawledData: ITableData[],
-  ): Promise<ITableData[]> {
-    const existingNums = await this.noticeRepository
-      .find({ select: ['num'] })
-      .then((notices) => notices.map((notice) => notice.num));
-
-    return crawledData.filter((item) => !existingNums.includes(item.num));
-  }
-
-  private async saveNewNotices(notices: ITableData[]): Promise<void> {
-    const noticeEntities = notices.map((notice) =>
-      this.noticeRepository.create({
-        num: notice.num,
-        subject: notice.subject,
-        proposerCategory: notice.proposerCategory,
-        committee: notice.committee,
-        numComments: notice.numComments,
-        link: notice.link,
-        isNotified: false,
-      }),
-    );
-
-    await this.noticeRepository.save(noticeEntities);
-    this.logger.log(`Saved ${notices.length} new notices to database`);
-  }
-
+  /**
+   * 병렬로 알림을 전송하고 실패한 웹훅을 자동 삭제
+   */
   private async sendNotifications(notices: ITableData[]): Promise<void> {
     const webhooks = await this.webhookService.findAll();
 
@@ -96,23 +91,42 @@ export class CrawlingService {
       return;
     }
 
-    for (const notice of notices) {
-      await this.notificationService.sendDiscordNotification(notice, webhooks);
+    // 각 입법예고에 대해 모든 웹훅으로 병렬 전송
+    const notificationPromises = notices.map(async (notice) => {
+      const results =
+        await this.notificationService.sendDiscordNotificationBatch(
+          notice,
+          webhooks,
+        );
 
-      // 알림 전송 완료 표시
-      await this.noticeRepository.update(
-        { num: notice.num },
-        { isNotified: true },
-      );
-    }
+      // 실패한 웹훅들을 자동 삭제
+      const failedWebhookIds = results
+        .filter((result) => !result.success)
+        .map((result) => result.webhookId);
 
+      if (failedWebhookIds.length > 0) {
+        await this.webhookService.removeFailedWebhooks(failedWebhookIds);
+        this.logger.warn(
+          `Removed ${failedWebhookIds.length} failed webhooks: ${failedWebhookIds.join(', ')}`,
+        );
+      }
+    });
+
+    await Promise.all(notificationPromises);
     this.logger.log(`Sent notifications for ${notices.length} notices`);
   }
 
-  async getRecentNotices(limit: number = 10): Promise<LegislativeNotice[]> {
-    return this.noticeRepository.find({
-      order: { createdAt: 'DESC' },
-      take: limit,
-    });
+  /**
+   * 캐시에서 최근 입법예고를 반환
+   */
+  getRecentNotices(limit: number = 10): ITableData[] {
+    return this.cacheService.getRecentNotices(limit);
+  }
+
+  /**
+   * 캐시 정보를 반환
+   */
+  getCacheInfo() {
+    return this.cacheService.getCacheInfo();
   }
 }
