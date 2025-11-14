@@ -1,15 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 
 @Injectable()
 export class RecaptchaService {
   private readonly logger = new Logger(RecaptchaService.name);
-  private readonly secretKey = process.env.RECAPTCHA_SECRET_KEY;
   private readonly verifyUrl =
     'https://www.google.com/recaptcha/api/siteverify';
 
+  constructor(private readonly configService: ConfigService) {}
+
   async verifyToken(token: string, remoteIp?: string): Promise<boolean> {
-    if (!this.secretKey) {
+    const secretKey = this.configService.get<string>('recaptcha.secretKey');
+
+    if (!secretKey) {
       this.logger.warn('reCAPTCHA secret key not configured');
       return true; // 개발 환경에서는 통과
     }
@@ -22,7 +26,7 @@ export class RecaptchaService {
     try {
       const response = await axios.post(this.verifyUrl, null, {
         params: {
-          secret: this.secretKey,
+          secret: secretKey,
           response: token,
           ...(remoteIp && { remoteip: remoteIp }),
         },

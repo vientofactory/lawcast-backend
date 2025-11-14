@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { RecaptchaService } from '../services/recaptcha.service';
 import axios from 'axios';
 
@@ -14,16 +15,25 @@ describe('RecaptchaService', () => {
   });
 
   afterEach(() => {
-    delete process.env.RECAPTCHA_SECRET_KEY;
+    jest.clearAllMocks();
   });
 
   describe('verifyToken', () => {
     describe('when secret key is available', () => {
       beforeEach(async () => {
-        process.env.RECAPTCHA_SECRET_KEY = 'test-secret-key';
-
         const module: TestingModule = await Test.createTestingModule({
-          providers: [RecaptchaService],
+          providers: [
+            RecaptchaService,
+            {
+              provide: ConfigService,
+              useValue: {
+                get: jest.fn((key: string) => {
+                  if (key === 'recaptcha.secretKey') return 'test-secret-key';
+                  return undefined;
+                }),
+              },
+            },
+          ],
         }).compile();
 
         service = module.get<RecaptchaService>(RecaptchaService);
@@ -139,10 +149,19 @@ describe('RecaptchaService', () => {
 
     describe('when secret key is not available', () => {
       beforeEach(async () => {
-        delete process.env.RECAPTCHA_SECRET_KEY;
-
         const module: TestingModule = await Test.createTestingModule({
-          providers: [RecaptchaService],
+          providers: [
+            RecaptchaService,
+            {
+              provide: ConfigService,
+              useValue: {
+                get: jest.fn((key: string) => {
+                  if (key === 'recaptcha.secretKey') return undefined;
+                  return undefined;
+                }),
+              },
+            },
+          ],
         }).compile();
 
         service = module.get<RecaptchaService>(RecaptchaService);

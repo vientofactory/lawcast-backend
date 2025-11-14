@@ -8,9 +8,7 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService);
   const logger = new Logger('Bootstrap');
-  const frontendUrls = configService.get<string>('FRONTEND_URL')
-    ? configService.get<string>('FRONTEND_URL').split(',')
-    : ['http://localhost:5173'];
+  const frontendUrls = configService.get<string[]>('frontend.urls');
 
   app.enableCors({
     origin: frontendUrls,
@@ -19,7 +17,7 @@ async function bootstrap() {
   app.setGlobalPrefix('');
   app.disable('x-powered-by');
 
-  const port = configService.get<number>('PORT') || 3001;
+  const port = configService.get<number>('port');
   await app.listen(port);
 
   logger.log(`LawCast Backend is running on port ${port}`);

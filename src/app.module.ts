@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
@@ -11,17 +11,28 @@ import { NotificationService } from './services/notification.service';
 import { CacheService } from './services/cache.service';
 import { RecaptchaService } from './services/recaptcha.service';
 import { Webhook } from './entities/webhook.entity';
+import appConfig from './config/app.config';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      load: [appConfig],
+      envFilePath: [
+        '.env',
+        '.env.local',
+        '.env.development',
+        '.env.production',
+      ],
     }),
-    TypeOrmModule.forRoot({
-      type: 'sqlite',
-      database: process.env.DATABASE_PATH || 'lawcast.db',
-      entities: [Webhook],
-      synchronize: true,
+    TypeOrmModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        type: 'sqlite',
+        database: configService.get<string>('database.path'),
+        entities: [Webhook],
+        synchronize: true,
+      }),
     }),
     TypeOrmModule.forFeature([Webhook]),
     ScheduleModule.forRoot(),

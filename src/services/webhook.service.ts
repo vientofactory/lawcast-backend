@@ -29,6 +29,21 @@ export class WebhookService {
       );
     }
 
+    // 웹훅 개수 제한 체크
+    const activeWebhookCount = await this.webhookRepository.count({
+      where: { isActive: true },
+    });
+
+    if (activeWebhookCount >= 100) {
+      throw new HttpException(
+        {
+          success: false,
+          message: '최대 100개의 웹훅만 등록할 수 있습니다.',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
     const webhook = this.webhookRepository.create({
       url: normalizedUrl,
     });
