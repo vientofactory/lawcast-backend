@@ -14,6 +14,7 @@ import { WebhookService } from '../services/webhook.service';
 import { CrawlingService } from '../services/crawling.service';
 import { NotificationService } from '../services/notification.service';
 import { RecaptchaService } from '../services/recaptcha.service';
+import { BatchProcessingService } from '../services/batch-processing.service';
 import { CreateWebhookDto } from '../dto/create-webhook.dto';
 import { WebhookValidationUtils } from '../utils/webhook-validation.utils';
 import { ApiResponseUtils, ErrorContext } from '../utils/api-response.utils';
@@ -26,6 +27,7 @@ export class ApiController {
     private readonly crawlingService: CrawlingService,
     private readonly notificationService: NotificationService,
     private readonly recaptchaService: RecaptchaService,
+    private readonly batchProcessingService: BatchProcessingService,
   ) {}
 
   @Post('webhooks')
@@ -85,15 +87,26 @@ export class ApiController {
 
   @Get('stats')
   async getStats() {
-    const [webhookStats, cacheInfo] = await Promise.all([
+    const [webhookStats, cacheInfo, batchStatus] = await Promise.all([
       this.webhookService.getStats(),
       this.crawlingService.getCacheInfo(),
+      this.batchProcessingService.getBatchJobStatus(),
     ]);
 
     return ApiResponseUtils.success({
       webhooks: webhookStats,
       cache: cacheInfo,
+      batchProcessing: batchStatus,
     });
+  }
+
+  @Get('batch/status')
+  async getBatchStatus() {
+    const status = this.batchProcessingService.getBatchJobStatus();
+    return ApiResponseUtils.success(
+      status,
+      'Batch processing status retrieved successfully',
+    );
   }
 
   @Get('health')

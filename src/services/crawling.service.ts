@@ -1,9 +1,8 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PalCrawl, type ITableData } from 'pal-crawl';
-import { WebhookService } from './webhook.service';
-import { NotificationService } from './notification.service';
 import { CacheService } from './cache.service';
+import { BatchProcessingService } from './batch-processing.service';
 import { APP_CONSTANTS } from '../config/app.config';
 
 @Injectable()
@@ -13,9 +12,8 @@ export class CrawlingService implements OnModuleInit {
   private isInitialized = false;
 
   constructor(
-    private webhookService: WebhookService,
-    private notificationService: NotificationService,
     private cacheService: CacheService,
+    private batchProcessingService: BatchProcessingService,
   ) {}
 
   /**
@@ -100,38 +98,20 @@ export class CrawlingService implements OnModuleInit {
   }
 
   /**
-   * 병렬로 알림을 전송하고 실패한 웹훅을 자동 삭제
+   * 논블로킹 방식으로 알림 배치 처리를 시작
    */
   private async sendNotifications(notices: ITableData[]): Promise<void> {
-    const webhooks = await this.webhookService.findAll();
-
-    if (webhooks.length === 0) {
-      this.logger.warn('No active webhooks found');
-      return;
-    }
-
-    // 각 입법예고에 대해 모든 웹훅으로 병렬 전송
-    const notificationPromises = notices.map(async (notice) => {
-      const results =
-        await this.notificationService.sendDiscordNotificationBatch(
-          notice,
-          webhooks,
-        );
-
-      // 실패한 웹훅들을 자동 삭제
-      const failedWebhookIds = results
-        .filter((result) => !result.success)
-        .map((result) => result.webhookId);
-
-      if (failedWebhookIds.length > 0) {
-        await this.webhookService.removeFailedWebhooks(failedWebhookIds);
-        this.logger.warn(
-          `Removed ${failedWebhookIds.length} failed webhooks: ${failedWebhookIds.join(', ')}`,
-        );
-      }
+    // 논블로킹 배치 처리 시작 (백그라운드에서 실행)
+    await this.batchProcessingService.processNotificationBatch(notices, {
+      concurrency: 5,
+      timeout: 30000,
+      retryCount: 3,
+      retryDelay: 1000,
     });
 
-    await Promise.all(notificationPromises);
+    this.logger.log(
+      `Started background notification processing for ${notices.length} notices`,
+    );
   }
 
   /**

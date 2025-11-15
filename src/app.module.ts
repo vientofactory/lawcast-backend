@@ -8,6 +8,7 @@ import { CrawlingService } from './services/crawling.service';
 import { NotificationService } from './services/notification.service';
 import { CacheService } from './services/cache.service';
 import { RecaptchaService } from './services/recaptcha.service';
+import { BatchProcessingService } from './services/batch-processing.service';
 import { Webhook } from './entities/webhook.entity';
 import appConfig from './config/app.config';
 
@@ -42,6 +43,7 @@ import appConfig from './config/app.config';
     NotificationService,
     CacheService,
     RecaptchaService,
+    BatchProcessingService,
   ],
 })
 export class AppModule {}
