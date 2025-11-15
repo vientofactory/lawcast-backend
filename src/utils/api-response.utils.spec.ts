@@ -215,7 +215,8 @@ describe('ApiResponseUtils', () => {
       expect(exception).toBeInstanceOf(BadRequestException);
       expect(exception.getResponse()).toEqual({
         success: false,
-        message: '웹훅 테스트에 실패했습니다. URL을 확인해주세요.',
+        message: '웹훅 테스트에 실패했습니다.',
+        details: undefined,
       });
     });
 
@@ -227,9 +228,52 @@ describe('ApiResponseUtils', () => {
       expect(exception).toBeInstanceOf(BadRequestException);
       expect(exception.getResponse()).toEqual({
         success: false,
-        message: '웹훅 테스트에 실패했습니다. URL을 확인해주세요.',
+        message: '웹훅 테스트에 실패했습니다.',
         details: errorMessage,
       });
+    });
+
+    it('should create specific error messages for different error types', () => {
+      const testCases = [
+        {
+          errorType: 'INVALID_WEBHOOK',
+          expectedMessage: '유효하지 않은 Discord 웹훅 URL입니다.',
+        },
+        {
+          errorType: 'NOT_FOUND',
+          expectedMessage:
+            '웹훅을 찾을 수 없습니다. 삭제되었거나 잘못된 URL입니다.',
+        },
+        {
+          errorType: 'UNAUTHORIZED',
+          expectedMessage: '웹훅에 대한 권한이 없습니다.',
+        },
+        {
+          errorType: 'FORBIDDEN',
+          expectedMessage: '웹훅 사용이 차단되었습니다.',
+        },
+        {
+          errorType: 'RATE_LIMITED',
+          expectedMessage: '요청이 제한되었습니다. 잠시 후 다시 시도해주세요.',
+        },
+        {
+          errorType: 'NETWORK_ERROR',
+          expectedMessage: '네트워크 오류가 발생했습니다. 연결을 확인해주세요.',
+        },
+      ];
+
+      for (const testCase of testCases) {
+        const exception = ApiResponseUtils.createWebhookTestFailedException(
+          'Test error',
+          testCase.errorType,
+        );
+
+        expect(exception.getResponse()).toMatchObject({
+          success: false,
+          message: testCase.expectedMessage,
+          details: 'Test error',
+        });
+      }
     });
   });
 });

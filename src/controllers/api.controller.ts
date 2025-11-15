@@ -15,6 +15,7 @@ import { CrawlingService } from '../services/crawling.service';
 import { NotificationService } from '../services/notification.service';
 import { RecaptchaService } from '../services/recaptcha.service';
 import { BatchProcessingService } from '../services/batch-processing.service';
+import { WebhookCleanupService } from '../services/webhook-cleanup.service';
 import { CreateWebhookDto } from '../dto/create-webhook.dto';
 import { WebhookValidationUtils } from '../utils/webhook-validation.utils';
 import { ApiResponseUtils, ErrorContext } from '../utils/api-response.utils';
@@ -28,6 +29,7 @@ export class ApiController {
     private readonly notificationService: NotificationService,
     private readonly recaptchaService: RecaptchaService,
     private readonly batchProcessingService: BatchProcessingService,
+    private readonly webhookCleanupService: WebhookCleanupService,
   ) {}
 
   @Post('webhooks')
@@ -54,22 +56,36 @@ export class ApiController {
         throw ApiResponseUtils.createRecaptchaFailedException();
       }
 
-      // 웹훅 생성
-      const webhook = await this.webhookService.create({
-        url: createWebhookDto.url,
-      });
+      // 중복 웹훅 URL 체크
+      const existingWebhook = await this.webhookService.findByUrl(
+        createWebhookDto.url,
+      );
+      if (existingWebhook) {
+        throw ApiResponseUtils.createDuplicateWebhookException();
+      }
+
+      // 웹훅 개수 제한 체크
+      const webhookStats = await this.webhookService.getDetailedStats();
+      if (webhookStats.active >= 100) {
+        throw ApiResponseUtils.createWebhookLimitExceededException();
+      }
 
       // 웹훅 테스트
       const testResult = await this.notificationService.testWebhook(
-        webhook.url,
+        createWebhookDto.url,
       );
 
-      if (!testResult.success && testResult.shouldDelete) {
-        await this.webhookService.remove(webhook.id);
+      if (!testResult.success) {
         throw ApiResponseUtils.createWebhookTestFailedException(
           testResult.error?.message,
+          testResult.errorType,
         );
       }
+
+      // 웹훅 생성
+      await this.webhookService.create({
+        url: createWebhookDto.url,
+      });
 
       return ApiResponseUtils.webhookSuccess(testResult);
     } catch (error) {
@@ -88,7 +104,7 @@ export class ApiController {
   @Get('stats')
   async getStats() {
     const [webhookStats, cacheInfo, batchStatus] = await Promise.all([
-      this.webhookService.getStats(),
+      this.webhookService.getDetailedStats(),
       this.crawlingService.getCacheInfo(),
       this.batchProcessingService.getBatchJobStatus(),
     ]);
@@ -114,6 +130,31 @@ export class ApiController {
     return ApiResponseUtils.success(
       { timestamp: new Date().toISOString() },
       'LawCast API is healthy',
+    );
+  }
+
+  @Get('webhooks/stats/detailed')
+  async getDetailedWebhookStats() {
+    const stats = await this.webhookService.getDetailedStats();
+    return ApiResponseUtils.success(
+      stats,
+      'Detailed webhook statistics retrieved successfully',
+    );
+  }
+
+  @Get('webhooks/system-health')
+  async getSystemHealth() {
+    const stats = await this.webhookService.getDetailedStats();
+    const efficiency =
+      stats.total > 0 ? (stats.active / stats.total) * 100 : 100;
+
+    return ApiResponseUtils.success(
+      {
+        efficiency: Number(efficiency.toFixed(1)),
+        stats,
+        status: efficiency >= 70 ? 'healthy' : 'needs_optimization',
+      },
+      'System health status retrieved successfully',
     );
   }
 }

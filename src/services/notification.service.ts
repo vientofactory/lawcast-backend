@@ -38,7 +38,14 @@ export class NotificationService {
   async sendDiscordNotificationBatch(
     notice: ITableData,
     webhooks: Webhook[],
-  ): Promise<Array<{ webhookId: number; success: boolean; error?: any }>> {
+  ): Promise<
+    Array<{
+      webhookId: number;
+      success: boolean;
+      error?: any;
+      shouldDelete?: boolean;
+    }>
+  > {
     const embed = this.createNotificationEmbed(notice);
 
     const promises = webhooks.map(async (webhook) => {
@@ -74,15 +81,15 @@ export class NotificationService {
    */
   private createNotificationEmbed(notice: ITableData): MessageBuilder {
     return new MessageBuilder()
-      .setTitle('🏦 새로운 국회 입법예고')
+      .setTitle('새로운 국회 입법예고')
       .setDescription(
         '새로운 입법예고가 감지되었습니다. 아래 정보를 확인하세요.',
       )
-      .addField('📋 법률안명', notice.subject, false)
-      .addField('👥 제안자 구분', notice.proposerCategory, true)
-      .addField('🏢 소관위원회', notice.committee, true)
-      .addField('💬 의견 수', notice.numComments.toString(), true)
-      .addField('🔗 자세히 보기', `[링크 바로가기](${notice.link})`, false)
+      .addField('법률안명', notice.subject, false)
+      .addField('제안자 구분', notice.proposerCategory, true)
+      .addField('소관위원회', notice.committee, true)
+      .addField('의견 수', notice.numComments.toString(), true)
+      .addField('자세히 보기', `[링크 바로가기](${notice.link})`, false)
       .setColor(APP_CONSTANTS.COLORS.DISCORD.PRIMARY)
       .setTimestamp()
       .setFooter('LawCast 알림 서비스', '');
@@ -106,16 +113,25 @@ export class NotificationService {
     return false;
   }
 
-  async testWebhook(
-    webhookUrl: string,
-  ): Promise<{ success: boolean; shouldDelete: boolean; error?: any }> {
+  async testWebhook(webhookUrl: string): Promise<{
+    success: boolean;
+    shouldDelete: boolean;
+    error?: any;
+    errorType?: string;
+  }> {
     try {
       const discordWebhook = new DiscordWebhook(webhookUrl);
       discordWebhook.setUsername('LawCast 알리미');
 
+      const description = [
+        '웹훅이 정상적으로 설정되었습니다!',
+        '새로운 입법예고가 감지되면 이 채널로 알림을 받게 됩니다.',
+        '알림 수신을 원치 않으실 경우 언제든지 웹훅을 삭제하실 수 있습니다.',
+      ].join('\n');
+
       const testEmbed = new MessageBuilder()
-        .setTitle('🧪 LawCast 웹훅 테스트')
-        .setDescription('웹훅이 정상적으로 설정되었습니다!')
+        .setTitle('LawCast 웹훅 테스트')
+        .setDescription(description)
         .setColor(APP_CONSTANTS.COLORS.DISCORD.SUCCESS)
         .setTimestamp()
         .setFooter('LawCast 알림 서비스', '');
@@ -124,11 +140,57 @@ export class NotificationService {
       return { success: true, shouldDelete: false };
     } catch (error) {
       this.logger.error('Failed to send test webhook notification:', error);
+      const errorType = this.categorizeWebhookError(error);
+
       return {
         success: false,
         shouldDelete: this.shouldDeleteWebhook(error),
         error,
+        errorType,
       };
     }
+  }
+
+  /**
+   * 웹훅 에러를 카테고리별로 분류
+   */
+  private categorizeWebhookError(error: any): string {
+    if (error.response?.status) {
+      const status = error.response.status;
+      const { NOT_FOUND, UNAUTHORIZED, FORBIDDEN, TOO_MANY_REQUESTS } =
+        APP_CONSTANTS.DISCORD.API.ERROR_CODES;
+
+      switch (status) {
+        case NOT_FOUND:
+          return 'NOT_FOUND';
+        case UNAUTHORIZED:
+          return 'UNAUTHORIZED';
+        case FORBIDDEN:
+          return 'FORBIDDEN';
+        case TOO_MANY_REQUESTS:
+          return 'RATE_LIMITED';
+        default:
+          return 'INVALID_WEBHOOK';
+      }
+    }
+
+    // 네트워크 관련 에러
+    if (
+      error.code === 'ENOTFOUND' ||
+      error.code === 'ECONNREFUSED' ||
+      error.code === 'ETIMEDOUT'
+    ) {
+      return 'NETWORK_ERROR';
+    }
+
+    // URL 파싱 에러나 기타 클라이언트 에러
+    if (
+      error.message?.includes('Invalid URL') ||
+      error.message?.includes('webhook')
+    ) {
+      return 'INVALID_WEBHOOK';
+    }
+
+    return 'UNKNOWN_ERROR';
   }
 }

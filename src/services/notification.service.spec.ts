@@ -107,15 +107,15 @@ describe('NotificationService', () => {
       await service.sendDiscordNotification(mockNotice, [mockWebhooks[0]]);
 
       expect(mockMessageBuilder.setTitle).toHaveBeenCalledWith(
-        '🏦 새로운 국회 입법예고',
+        '새로운 국회 입법예고',
       );
       expect(mockMessageBuilder.addField).toHaveBeenCalledWith(
-        '📋 법률안명',
+        '법률안명',
         '테스트 법률안',
         false,
       );
       expect(mockMessageBuilder.addField).toHaveBeenCalledWith(
-        '👥 제안자 구분',
+        '제안자 구분',
         '정부',
         true,
       );
@@ -210,7 +210,7 @@ describe('NotificationService', () => {
         'LawCast 알리미',
       );
       expect(mockMessageBuilder.setTitle).toHaveBeenCalledWith(
-        '🧪 LawCast 웹훅 테스트',
+        'LawCast 웹훅 테스트',
       );
       expect(mockMessageBuilder.setColor).toHaveBeenCalledWith(0x10b981);
     });
@@ -225,6 +225,7 @@ describe('NotificationService', () => {
         success: false,
         shouldDelete: true,
         error,
+        errorType: 'UNAUTHORIZED',
       });
     });
 
@@ -238,6 +239,7 @@ describe('NotificationService', () => {
         success: false,
         shouldDelete: false,
         error: networkError,
+        errorType: 'UNKNOWN_ERROR',
       });
     });
   });

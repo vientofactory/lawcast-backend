@@ -11,39 +11,23 @@ export class WebhookService {
   ) {}
 
   async create(webhookData: { url: string }): Promise<Webhook> {
-    // URL 정규화
     const normalizedUrl = this.normalizeWebhookUrl(webhookData.url);
 
-    // 중복 URL 체크 (정규화된 URL로)
+    // 중복 확인 및 자동 복원 (soft delete된 것이 있다면 재활성화)
     const existingWebhook = await this.webhookRepository.findOne({
       where: { url: normalizedUrl },
     });
 
     if (existingWebhook) {
-      throw new HttpException(
-        {
-          success: false,
-          message: '이미 등록된 웹훅 URL입니다.',
-        },
-        HttpStatus.CONFLICT,
-      );
+      if (!existingWebhook.isActive) {
+        existingWebhook.isActive = true;
+        existingWebhook.updatedAt = new Date();
+        return this.webhookRepository.save(existingWebhook);
+      }
+      return existingWebhook; // 이미 활성화된 상태
     }
 
-    // 웹훅 개수 제한 체크
-    const activeWebhookCount = await this.webhookRepository.count({
-      where: { isActive: true },
-    });
-
-    if (activeWebhookCount >= 100) {
-      throw new HttpException(
-        {
-          success: false,
-          message: '최대 100개의 웹훅만 등록할 수 있습니다.',
-        },
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
-
+    // 새로운 웹훅 생성
     const webhook = this.webhookRepository.create({
       url: normalizedUrl,
     });
@@ -85,6 +69,13 @@ export class WebhookService {
     return webhook;
   }
 
+  async findByUrl(url: string): Promise<Webhook | null> {
+    const normalizedUrl = this.normalizeWebhookUrl(url);
+    return this.webhookRepository.findOne({
+      where: { url: normalizedUrl, isActive: true },
+    });
+  }
+
   async remove(id: number): Promise<void> {
     const webhook = await this.findOne(id);
     webhook.isActive = false;
@@ -92,36 +83,148 @@ export class WebhookService {
   }
 
   /**
-   * 실패한 웹훅들을 배치로 비활성화
+   * 실패한 웹훅들을 배치로 효율적 삭제
    */
-  async removeFailedWebhooks(webhookIds: number[]): Promise<void> {
+  async removeFailedWebhooks(webhookIds: number[]): Promise<number> {
     if (webhookIds.length === 0) {
-      return;
+      return 0;
     }
 
-    await this.webhookRepository.update(
-      { id: In(webhookIds) },
-      { isActive: false },
-    );
+    // 배치 크기 제한으로 대용량 삭제 시 성능 보장
+    const batchSize = 500;
+    let totalDeleted = 0;
+
+    for (let i = 0; i < webhookIds.length; i += batchSize) {
+      const batch = webhookIds.slice(i, i + batchSize);
+      const result = await this.webhookRepository.delete({ id: In(batch) });
+      totalDeleted += result.affected || 0;
+    }
+
+    return totalDeleted;
   }
 
   /**
-   * 통계 정보 조회
+   * 대량 웹훅 생성 (중복 제거 및 최적화)
    */
-  async getStats(): Promise<{
+  async createBulk(
+    urls: string[],
+  ): Promise<{ created: number; reactivated: number; duplicates: number }> {
+    const normalizedUrls = urls.map((url) => this.normalizeWebhookUrl(url));
+    const uniqueUrls = [...new Set(normalizedUrls)];
+
+    let created = 0;
+    let reactivated = 0;
+    const duplicates = urls.length - uniqueUrls.length;
+
+    for (const url of uniqueUrls) {
+      const existing = await this.webhookRepository.findOne({ where: { url } });
+
+      if (existing) {
+        if (!existing.isActive) {
+          existing.isActive = true;
+          existing.updatedAt = new Date();
+          await this.webhookRepository.save(existing);
+          reactivated++;
+        }
+      } else {
+        const webhook = this.webhookRepository.create({ url });
+        await this.webhookRepository.save(webhook);
+        created++;
+      }
+    }
+
+    return { created, reactivated, duplicates };
+  }
+
+  /**
+   * 비활성 웹훅들을 완전히 정리 (DB 최적화용)
+   */
+  async cleanupInactiveWebhooks(): Promise<number> {
+    const result = await this.webhookRepository.delete({ isActive: false });
+    return result.affected || 0;
+  }
+
+  /**
+   * 오래된 비활성 웹훅들을 배치로 효율적 정리
+   */
+  async cleanupOldInactiveWebhooks(daysBefore: number = 30): Promise<number> {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysBefore);
+
+    // 배치 처리를 위해 ID 기반으로 처리
+    const batchSize = 1000;
+    let totalDeleted = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      // 삭제할 ID들을 먼저 조회
+      const webhooksToDelete = await this.webhookRepository
+        .createQueryBuilder('webhook')
+        .select('webhook.id')
+        .where('webhook.isActive = :isActive', { isActive: false })
+        .andWhere('webhook.updatedAt < :cutoffDate', { cutoffDate })
+        .limit(batchSize)
+        .getMany();
+
+      if (webhooksToDelete.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      // 조회된 ID들로 삭제 실행
+      const ids = webhooksToDelete.map((w) => w.id);
+      const result = await this.webhookRepository.delete({ id: In(ids) });
+
+      const deleted = result.affected || 0;
+      totalDeleted += deleted;
+      hasMore = webhooksToDelete.length === batchSize;
+    }
+
+    return totalDeleted;
+  }
+
+  /**
+   * 최적화된 통계 조회 (단일 쿼리로 모든 정보 수집)
+   */
+  async getDetailedStats(): Promise<{
     total: number;
     active: number;
     inactive: number;
+    oldInactive: number;
+    recentInactive: number;
+    efficiency: number;
   }> {
-    const [total, active] = await Promise.all([
-      this.webhookRepository.count(),
-      this.webhookRepository.count({ where: { isActive: true } }),
-    ]);
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - 30);
 
-    return {
-      total,
-      active,
-      inactive: total - active,
+    const recentCutoffDate = new Date();
+    recentCutoffDate.setDate(recentCutoffDate.getDate() - 7);
+
+    // 단일 쿼리로 모든 통계 수집 (성능 최적화)
+    const result = await this.webhookRepository
+      .createQueryBuilder('webhook')
+      .select([
+        'COUNT(*) as total',
+        'SUM(CASE WHEN webhook.isActive = true THEN 1 ELSE 0 END) as active',
+        'SUM(CASE WHEN webhook.isActive = false THEN 1 ELSE 0 END) as inactive',
+        'SUM(CASE WHEN webhook.isActive = false AND webhook.updatedAt < :cutoffDate THEN 1 ELSE 0 END) as oldInactive',
+        'SUM(CASE WHEN webhook.isActive = false AND webhook.updatedAt > :recentCutoffDate THEN 1 ELSE 0 END) as recentInactive',
+      ])
+      .setParameters({ cutoffDate, recentCutoffDate })
+      .getRawOne();
+
+    const stats = {
+      total: parseInt(result.total) || 0,
+      active: parseInt(result.active) || 0,
+      inactive: parseInt(result.inactive) || 0,
+      oldInactive: parseInt(result.oldInactive) || 0,
+      recentInactive: parseInt(result.recentInactive) || 0,
+      efficiency: 0,
     };
+
+    stats.efficiency =
+      stats.total > 0 ? (stats.active / stats.total) * 100 : 100;
+
+    return stats;
   }
 }

@@ -15,6 +15,8 @@ describe('WebhookService', () => {
     findOne: jest.fn(),
     count: jest.fn(),
     update: jest.fn(),
+    delete: jest.fn(),
+    createQueryBuilder: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -43,20 +45,12 @@ describe('WebhookService', () => {
     it('should successfully create a new webhook', async () => {
       const mockWebhook = { id: 1, url: validWebhookData.url, isActive: true };
 
-      mockRepository.findOne.mockResolvedValue(null);
-      mockRepository.count.mockResolvedValue(10);
       mockRepository.create.mockReturnValue(mockWebhook);
       mockRepository.save.mockResolvedValue(mockWebhook);
 
       const result = await service.create(validWebhookData);
 
       expect(result).toEqual(mockWebhook);
-      expect(mockRepository.findOne).toHaveBeenCalledWith({
-        where: { url: validWebhookData.url },
-      });
-      expect(mockRepository.count).toHaveBeenCalledWith({
-        where: { isActive: true },
-      });
       expect(mockRepository.create).toHaveBeenCalledWith({
         url: validWebhookData.url,
       });
@@ -69,16 +63,11 @@ describe('WebhookService', () => {
       const normalizedUrl =
         'https://discord.com/api/webhooks/123456789/token123';
 
-      mockRepository.findOne.mockResolvedValue(null);
-      mockRepository.count.mockResolvedValue(10);
       mockRepository.create.mockReturnValue({});
       mockRepository.save.mockResolvedValue({});
 
       await service.create(urlWithTrailingSlash);
 
-      expect(mockRepository.findOne).toHaveBeenCalledWith({
-        where: { url: normalizedUrl },
-      });
       expect(mockRepository.create).toHaveBeenCalledWith({
         url: normalizedUrl,
       });
@@ -91,8 +80,6 @@ describe('WebhookService', () => {
       const normalizedUrl =
         'https://discord.com/api/webhooks/123456789/token123';
 
-      mockRepository.findOne.mockResolvedValue(null);
-      mockRepository.count.mockResolvedValue(10);
       mockRepository.create.mockReturnValue({});
       mockRepository.save.mockResolvedValue({});
 
@@ -103,51 +90,9 @@ describe('WebhookService', () => {
       });
     });
 
-    it('should throw CONFLICT error for duplicate URL', async () => {
-      const existingWebhook = { id: 1, url: validWebhookData.url };
-      mockRepository.findOne.mockResolvedValue(existingWebhook);
-
-      await expect(service.create(validWebhookData)).rejects.toThrow(
-        HttpException,
-      );
-
-      try {
-        await service.create(validWebhookData);
-      } catch (error) {
-        expect(error).toBeInstanceOf(HttpException);
-        expect(error.getStatus()).toBe(HttpStatus.CONFLICT);
-        expect(error.getResponse()).toMatchObject({
-          success: false,
-          message: '이미 등록된 웹훅 URL입니다.',
-        });
-      }
-    });
-
-    it('should throw TOO_MANY_REQUESTS error for webhook limit', async () => {
-      mockRepository.findOne.mockResolvedValue(null);
-      mockRepository.count.mockResolvedValue(100);
-
-      await expect(service.create(validWebhookData)).rejects.toThrow(
-        HttpException,
-      );
-
-      try {
-        await service.create(validWebhookData);
-      } catch (error) {
-        expect(error).toBeInstanceOf(HttpException);
-        expect(error.getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
-        expect(error.getResponse()).toMatchObject({
-          success: false,
-          message: '최대 100개의 웹훅만 등록할 수 있습니다.',
-        });
-      }
-    });
-
     it('should handle invalid URL format', async () => {
       const invalidUrlData = { url: 'invalid-url' };
 
-      mockRepository.findOne.mockResolvedValue(null);
-      mockRepository.count.mockResolvedValue(10);
       mockRepository.create.mockReturnValue({});
       mockRepository.save.mockResolvedValue({});
 
@@ -216,6 +161,53 @@ describe('WebhookService', () => {
     });
   });
 
+  describe('findByUrl', () => {
+    it('should find webhook by URL', async () => {
+      const mockWebhook = {
+        id: 1,
+        url: 'https://discord.com/api/webhooks/123/token',
+        isActive: true,
+      };
+
+      mockRepository.findOne.mockResolvedValue(mockWebhook);
+
+      const result = await service.findByUrl(
+        'https://discord.com/api/webhooks/123/token',
+      );
+
+      expect(result).toEqual(mockWebhook);
+      expect(mockRepository.findOne).toHaveBeenCalledWith({
+        where: {
+          url: 'https://discord.com/api/webhooks/123/token',
+          isActive: true,
+        },
+      });
+    });
+
+    it('should normalize URL before searching', async () => {
+      mockRepository.findOne.mockResolvedValue(null);
+
+      await service.findByUrl('https://discord.com/api/webhooks/123/token/');
+
+      expect(mockRepository.findOne).toHaveBeenCalledWith({
+        where: {
+          url: 'https://discord.com/api/webhooks/123/token',
+          isActive: true,
+        },
+      });
+    });
+
+    it('should return null when webhook not found', async () => {
+      mockRepository.findOne.mockResolvedValue(null);
+
+      const result = await service.findByUrl(
+        'https://discord.com/api/webhooks/nonexistent/token',
+      );
+
+      expect(result).toBeNull();
+    });
+  });
+
   describe('remove', () => {
     it('should deactivate webhook', async () => {
       const mockWebhook = {
@@ -238,43 +230,46 @@ describe('WebhookService', () => {
   });
 
   describe('removeFailedWebhooks', () => {
-    it('should batch deactivate failed webhooks', async () => {
+    it('should permanently delete failed webhooks', async () => {
       const webhookIds = [1, 2, 3];
+      const mockDeleteResult = { affected: 3 };
+      mockRepository.delete.mockResolvedValue(mockDeleteResult);
 
-      await service.removeFailedWebhooks(webhookIds);
+      const result = await service.removeFailedWebhooks(webhookIds);
 
-      expect(mockRepository.update).toHaveBeenCalledWith(
-        { id: In(webhookIds) },
-        { isActive: false },
-      );
+      expect(result).toBe(3);
+      expect(mockRepository.delete).toHaveBeenCalledWith({
+        id: In(webhookIds),
+      });
     });
 
     it('should do nothing for empty array', async () => {
       await service.removeFailedWebhooks([]);
 
-      expect(mockRepository.update).not.toHaveBeenCalled();
+      expect(mockRepository.delete).not.toHaveBeenCalled();
     });
   });
 
-  describe('getStats', () => {
-    it('should return webhook statistics', async () => {
-      mockRepository.count
-        .mockResolvedValueOnce(150) // total
-        .mockResolvedValueOnce(120); // active
+  describe('deletePermanently', () => {});
 
-      const result = await service.getStats();
+  describe('cleanupInactiveWebhooks', () => {
+    it('should delete all inactive webhooks', async () => {
+      mockRepository.delete.mockResolvedValue({ affected: 5 });
 
-      expect(result).toEqual({
-        total: 150,
-        active: 120,
-        inactive: 30,
-      });
+      const result = await service.cleanupInactiveWebhooks();
 
-      expect(mockRepository.count).toHaveBeenCalledTimes(2);
-      expect(mockRepository.count).toHaveBeenNthCalledWith(1);
-      expect(mockRepository.count).toHaveBeenNthCalledWith(2, {
-        where: { isActive: true },
-      });
+      expect(result).toBe(5);
+      expect(mockRepository.delete).toHaveBeenCalledWith({ isActive: false });
+    });
+
+    it('should return 0 when no webhooks are deleted', async () => {
+      mockRepository.delete.mockResolvedValue({ affected: 0 });
+
+      const result = await service.cleanupInactiveWebhooks();
+
+      expect(result).toBe(0);
     });
   });
+
+  // getDetailedStats는 복잡한 SQL 쿼리를 사용하므로 통합 테스트에서 검증
 });

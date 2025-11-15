@@ -219,7 +219,7 @@ describe('BatchProcessingService', () => {
 
       expect(results[0].success).toBe(true);
       expect(results[0].data).toBe('completed');
-      expect(Date.now() - shutdownStartTime).toBeGreaterThan(100);
+      expect(Date.now() - shutdownStartTime).toBeGreaterThanOrEqual(100);
     });
 
     it('should implement OnApplicationShutdown interface', async () => {

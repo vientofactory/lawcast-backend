@@ -100,14 +100,53 @@ export class ApiResponseUtils {
   }
 
   /**
+   * 중복 웹훅 예외를 생성합니다.
+   */
+  static createDuplicateWebhookException(): BadRequestException {
+    return new BadRequestException({
+      success: false,
+      message: '이미 등록된 웹훅 URL입니다.',
+    });
+  }
+
+  /**
+   * 웹훅 제한 초과 예외를 생성합니다.
+   */
+  static createWebhookLimitExceededException(): BadRequestException {
+    return new BadRequestException({
+      success: false,
+      message: '최대 100개의 웹훅만 등록할 수 있습니다.',
+    });
+  }
+
+  /**
    * 웹훅 테스트 실패 예외를 생성합니다.
    */
   static createWebhookTestFailedException(
     errorMessage?: string,
+    errorType?: string,
   ): BadRequestException {
+    const baseMessage = '웹훅 테스트에 실패했습니다.';
+    let detailedMessage = baseMessage;
+
+    if (errorType === 'INVALID_WEBHOOK') {
+      detailedMessage = '유효하지 않은 Discord 웹훅 URL입니다.';
+    } else if (errorType === 'UNAUTHORIZED') {
+      detailedMessage = '웹훅에 대한 권한이 없습니다.';
+    } else if (errorType === 'NOT_FOUND') {
+      detailedMessage =
+        '웹훅을 찾을 수 없습니다. 삭제되었거나 잘못된 URL입니다.';
+    } else if (errorType === 'FORBIDDEN') {
+      detailedMessage = '웹훅 사용이 차단되었습니다.';
+    } else if (errorType === 'RATE_LIMITED') {
+      detailedMessage = '요청이 제한되었습니다. 잠시 후 다시 시도해주세요.';
+    } else if (errorType === 'NETWORK_ERROR') {
+      detailedMessage = '네트워크 오류가 발생했습니다. 연결을 확인해주세요.';
+    }
+
     return new BadRequestException({
       success: false,
-      message: '웹훅 테스트에 실패했습니다. URL을 확인해주세요.',
+      message: detailedMessage,
       details: errorMessage,
     });
   }

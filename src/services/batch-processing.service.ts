@@ -168,16 +168,29 @@ export class BatchProcessingService implements OnApplicationShutdown {
           webhooks,
         );
 
-      // 실패한 웹훅들 수집
-      const failedWebhookIds = results
-        .filter((result) => !result.success)
-        .map((result) => result.webhookId);
+      // 영구적으로 삭제해야 할 웹훅들과 일시적으로 실패한 웹훅들 분리
+      const permanentFailures = results.filter(
+        (result) => !result.success && result.shouldDelete,
+      );
+      const temporaryFailures = results.filter(
+        (result) => !result.success && !result.shouldDelete,
+      );
 
-      // 실패한 웹훅들을 자동 삭제
-      if (failedWebhookIds.length > 0) {
-        await this.webhookService.removeFailedWebhooks(failedWebhookIds);
+      // 영구적으로 실패한 웹훅들은 DB에서 완전히 삭제
+      if (permanentFailures.length > 0) {
+        const permanentFailureIds = permanentFailures.map(
+          (result) => result.webhookId,
+        );
+        await this.webhookService.removeFailedWebhooks(permanentFailureIds);
         this.logger.warn(
-          `Removed ${failedWebhookIds.length} failed webhooks for notice: ${notice.subject}`,
+          `Permanently deleted ${permanentFailures.length} failed webhooks for notice: ${notice.subject}`,
+        );
+      }
+
+      // 일시적 실패는 로그만 남김
+      if (temporaryFailures.length > 0) {
+        this.logger.warn(
+          `${temporaryFailures.length} webhooks failed temporarily for notice: ${notice.subject}`,
         );
       }
 
@@ -185,7 +198,9 @@ export class BatchProcessingService implements OnApplicationShutdown {
         notice: notice.subject,
         totalWebhooks: webhooks.length,
         successCount: results.filter((r) => r.success).length,
-        failedCount: failedWebhookIds.length,
+        failedCount: permanentFailures.length + temporaryFailures.length,
+        permanentlyDeleted: permanentFailures.length,
+        temporaryFailures: temporaryFailures.length,
       };
     });
 

@@ -9,6 +9,7 @@ import { NotificationService } from './services/notification.service';
 import { CacheService } from './services/cache.service';
 import { RecaptchaService } from './services/recaptcha.service';
 import { BatchProcessingService } from './services/batch-processing.service';
+import { WebhookCleanupService } from './services/webhook-cleanup.service';
 import { Webhook } from './entities/webhook.entity';
 import appConfig from './config/app.config';
 
@@ -44,6 +45,7 @@ import appConfig from './config/app.config';
     CacheService,
     RecaptchaService,
     BatchProcessingService,
+    WebhookCleanupService,
   ],
 })
 export class AppModule {}
