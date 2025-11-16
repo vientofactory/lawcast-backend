@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import { LoggerUtils } from '../utils/logger.utils';
 
 @Injectable()
 export class RecaptchaService {
@@ -37,7 +38,7 @@ export class RecaptchaService {
 
       const { success, score, action } = response.data;
 
-      this.logger.debug(`reCAPTCHA verification result:`, {
+      LoggerUtils.debugDev(this.logger, `reCAPTCHA verification result:`, {
         success,
         score,
         action,

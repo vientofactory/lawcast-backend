@@ -4,6 +4,7 @@ import { PalCrawl, type ITableData, type PalCrawlConfig } from 'pal-crawl';
 import { CacheService } from './cache.service';
 import { BatchProcessingService } from './batch-processing.service';
 import { APP_CONSTANTS } from '../config/app.config';
+import { LoggerUtils } from '../utils/logger.utils';
 
 @Injectable()
 export class CrawlingService implements OnModuleInit {
@@ -16,7 +17,6 @@ export class CrawlingService implements OnModuleInit {
     private cacheService: CacheService,
     private batchProcessingService: BatchProcessingService,
   ) {
-    // pal-crawl v1.2.0의 새로운 설정 옵션 활용
     this.crawlConfig = {
       userAgent: APP_CONSTANTS.CRAWLING.USER_AGENT,
       timeout: APP_CONSTANTS.CRAWLING.TIMEOUT,
@@ -99,7 +99,8 @@ export class CrawlingService implements OnModuleInit {
     const palCrawl = new PalCrawl(this.crawlConfig);
 
     try {
-      this.logger.debug(
+      LoggerUtils.debugDev(
+        this.logger,
         'Starting crawling process with enhanced configuration...',
       );
       const crawledData = await palCrawl.get();
@@ -109,7 +110,8 @@ export class CrawlingService implements OnModuleInit {
         return [];
       }
 
-      this.logger.debug(
+      LoggerUtils.debugDev(
+        this.logger,
         `Successfully crawled ${crawledData.length} legislative notices`,
       );
 
@@ -123,7 +125,7 @@ export class CrawlingService implements OnModuleInit {
         this.logger.log(`Found ${newNotices.length} new legislative notices`);
         await this.sendNotifications(newNotices);
       } else {
-        this.logger.debug('No new notices found');
+        LoggerUtils.debugDev(this.logger, 'No new notices found');
       }
 
       return newNotices;

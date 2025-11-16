@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { type ITableData } from 'pal-crawl';
 import { APP_CONSTANTS } from '../config/app.config';
+import { LoggerUtils } from '../utils/logger.utils';
 
 @Injectable()
 export class CacheService {
@@ -34,7 +35,8 @@ export class CacheService {
     this.lastUpdated = new Date();
     this.isInitialized = true;
 
-    this.logger.log(
+    LoggerUtils.logDev(
+      this.logger,
       `Cache initialized with ${this.recentNoticesCache.length} notices`,
     );
   }
@@ -50,7 +52,8 @@ export class CacheService {
     this.recentNoticesCache = sortedNotices.slice(0, this.MAX_CACHE_SIZE);
     this.lastUpdated = new Date();
 
-    this.logger.log(
+    LoggerUtils.logDev(
+      this.logger,
       `Cache updated with ${this.recentNoticesCache.length} notices`,
     );
   }
@@ -89,6 +92,6 @@ export class CacheService {
     this.recentNoticesCache = [];
     this.lastUpdated = null;
     this.isInitialized = false;
-    this.logger.log('Cache cleared');
+    LoggerUtils.logDev(this.logger, 'Cache cleared');
   }
 }

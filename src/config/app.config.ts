@@ -19,6 +19,20 @@ export interface AppConfig {
 // Application Constants
 export const APP_CONSTANTS = {
   DEFAULT_PORT: 3001,
+  LOG: {
+    LEVELS: {
+      ERROR: 0,
+      WARN: 1,
+      LOG: 2,
+      DEBUG: 3,
+      VERBOSE: 4,
+    },
+    // 개발 환경에서만 디버그 로그 출력
+    DEVELOPMENT_ONLY: {
+      DEBUG: true,
+      VERBOSE: true,
+    },
+  },
   CACHE: {
     MAX_SIZE: 50,
     DEFAULT_LIMIT: 10,

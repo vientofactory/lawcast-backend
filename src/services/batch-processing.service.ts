@@ -2,6 +2,7 @@ import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { type ITableData } from 'pal-crawl';
 import { WebhookService } from './webhook.service';
 import { NotificationService } from './notification.service';
+import { LoggerUtils } from '../utils/logger.utils';
 
 export interface BatchJobResult<T = any> {
   success: boolean;
@@ -117,7 +118,8 @@ export class BatchProcessingService implements OnApplicationShutdown {
     }
 
     const jobId = `notification_batch_${Date.now()}`;
-    this.logger.log(
+    LoggerUtils.logDev(
+      this.logger,
       `Starting notification batch processing for ${notices.length} notices`,
     );
 
@@ -143,7 +145,10 @@ export class BatchProcessingService implements OnApplicationShutdown {
       });
 
     // 즉시 반환 (논블로킹)
-    this.logger.log(`Notification batch job ${jobId} started in background`);
+    LoggerUtils.logDev(
+      this.logger,
+      `Notification batch job ${jobId} started in background`,
+    );
   }
 
   /**
@@ -343,7 +348,11 @@ export class BatchProcessingService implements OnApplicationShutdown {
     this.logger.log(
       `Waiting for ${jobStatus.jobCount} active batch jobs to complete...`,
     );
-    this.logger.debug(`Active job IDs: ${jobStatus.jobIds.join(', ')}`);
+
+    LoggerUtils.debugDev(
+      this.logger,
+      `Active job IDs: ${jobStatus.jobIds.join(', ')}`,
+    );
 
     try {
       // 타임아웃과 함께 모든 배치 작업 완료 대기
