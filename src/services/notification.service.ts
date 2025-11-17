@@ -88,7 +88,6 @@ export class NotificationService {
       .addField('법률안명', notice.subject, false)
       .addField('제안자 구분', notice.proposerCategory, true)
       .addField('소관위원회', notice.committee, true)
-      .addField('의견 수', notice.numComments.toString(), true)
       .addField('자세히 보기', `[링크 바로가기](${notice.link})`, false)
       .setColor(APP_CONSTANTS.COLORS.DISCORD.PRIMARY)
       .setTimestamp()
