@@ -117,12 +117,12 @@ describe('Non-blocking Architecture Verification', () => {
   });
 
   describe('Service Integration', () => {
-    it('should properly integrate BatchProcessingService with CrawlingService', () => {
+    it('should properly integrate BatchProcessingService with CrawlingService', async () => {
       expect(crawlingService).toBeDefined();
       expect(batchService).toBeDefined();
 
-      // getRecentNotices는 동기 메서드여야 함 (HTTP 응답에 사용)
-      const notices = crawlingService.getRecentNotices(10);
+      // getRecentNotices는 async 메서드지만 HTTP 컨트롤러에서 await로 호출됨
+      const notices = await crawlingService.getRecentNotices(10);
       expect(Array.isArray(notices)).toBe(true);
 
       console.log('✅ Service integration is correct');

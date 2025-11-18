@@ -47,8 +47,14 @@ export class NotificationService {
     }>
   > {
     const embed = this.createNotificationEmbed(notice);
+    const failedWebhooks = new Set<number>();
 
     const promises = webhooks.map(async (webhook) => {
+      // 이미 같은 배치에서 실패한 웹훅은 건너뜀
+      if (failedWebhooks.has(webhook.id)) {
+        return { webhookId: webhook.id, success: false, shouldDelete: true };
+      }
+
       try {
         const discordWebhook = new DiscordWebhook(webhook.url);
         discordWebhook.setUsername('LawCast 알리미');
@@ -56,12 +62,13 @@ export class NotificationService {
         await discordWebhook.send(embed);
         return { webhookId: webhook.id, success: true };
       } catch (error) {
-        // 에러 로깅 최소화 - 영구 실패만 경고, 일시적 실패는 디버그
         const shouldDelete = this.shouldDeleteWebhook(error);
 
         if (shouldDelete) {
+          // 영구 실패한 웹훅은 같은 배치에서 더 이상 시도하지 않음
+          failedWebhooks.add(webhook.id);
           this.logger.warn(
-            `Webhook ${webhook.id} permanently failed (404/401/403) - will be deleted`,
+            `Webhook ${webhook.id} permanently failed (404/401/403) - will be deactivated`,
           );
         } else {
           // 일시적 실패는 디버그 레벨로 로깅
@@ -114,6 +121,34 @@ export class NotificationService {
       return [NOT_FOUND, UNAUTHORIZED, FORBIDDEN].includes(status);
     }
 
+    // discord-webhook-node 라이브러리의 에러 메시지에서 status code 추출
+    if (error.message && typeof error.message === 'string') {
+      const message = error.message;
+
+      // "404 status code" 패턴 확인
+      const statusMatch = message.match(/(\d{3}) status code/);
+      if (statusMatch) {
+        const status = parseInt(statusMatch[1]);
+        const { NOT_FOUND, UNAUTHORIZED, FORBIDDEN } =
+          APP_CONSTANTS.DISCORD.API.ERROR_CODES;
+
+        return (
+          status === NOT_FOUND ||
+          status === UNAUTHORIZED ||
+          status === FORBIDDEN
+        );
+      }
+
+      // Discord API 에러 코드 확인 (응답 JSON에서)
+      const codeMatch = message.match(/"code":\s*(\d+)/);
+      if (codeMatch) {
+        const code = parseInt(codeMatch[1]);
+        // Discord webhook unknown error codes
+        const permanentErrorCodes = [10015]; // Unknown Webhook
+        return permanentErrorCodes.includes(code);
+      }
+    }
+
     // 네트워크 오류나 일시적 오류는 삭제하지 않음
     return false;
   }
@@ -160,6 +195,7 @@ export class NotificationService {
    * 웹훅 에러를 카테고리별로 분류
    */
   private categorizeWebhookError(error: any): string {
+    // axios 스타일 에러 처리
     if (error.response?.status) {
       const status = error.response.status;
       const { NOT_FOUND, UNAUTHORIZED, FORBIDDEN, TOO_MANY_REQUESTS } =
@@ -176,6 +212,44 @@ export class NotificationService {
           return 'RATE_LIMITED';
         default:
           return 'INVALID_WEBHOOK';
+      }
+    }
+
+    // discord-webhook-node 라이브러리의 에러 메시지에서 정보 추출
+    if (error.message && typeof error.message === 'string') {
+      const message = error.message;
+
+      // HTTP status code 추출
+      const statusMatch = message.match(/(\d{3}) status code/);
+      if (statusMatch) {
+        const status = parseInt(statusMatch[1]);
+        const { NOT_FOUND, UNAUTHORIZED, FORBIDDEN, TOO_MANY_REQUESTS } =
+          APP_CONSTANTS.DISCORD.API.ERROR_CODES;
+
+        switch (status) {
+          case NOT_FOUND:
+            return 'NOT_FOUND';
+          case UNAUTHORIZED:
+            return 'UNAUTHORIZED';
+          case FORBIDDEN:
+            return 'FORBIDDEN';
+          case TOO_MANY_REQUESTS:
+            return 'RATE_LIMITED';
+          default:
+            return 'INVALID_WEBHOOK';
+        }
+      }
+
+      // Discord API 에러 코드 추출
+      const codeMatch = message.match(/"code":\s*(\d+)/);
+      if (codeMatch) {
+        const code = parseInt(codeMatch[1]);
+        switch (code) {
+          case 10015:
+            return 'UNKNOWN_WEBHOOK';
+          default:
+            return 'DISCORD_API_ERROR';
+        }
       }
     }
 

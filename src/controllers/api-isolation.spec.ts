@@ -53,6 +53,7 @@ describe('HTTP-Batch Processing Isolation', () => {
         maxSize: 50,
         isInitialized: true,
       }),
+      isRedisConnected: jest.fn().mockReturnValue(true),
     };
 
     const mockRecaptchaService = {
