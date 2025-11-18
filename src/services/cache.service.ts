@@ -75,10 +75,10 @@ export class CacheService implements OnModuleDestroy {
           maxSize: this.MAX_CACHE_SIZE,
           isInitialized: true,
         }),
-        // 중복 체크를 위한 num 집합 저장
+        // 중복 체크를 위한 num 배열 저장 (Redis 직렬화 문제 해결)
         this.cacheManager.set(
           this.CACHE_KEYS.NEW_NOTICES_SET,
-          new Set(limitedNotices.map((notice) => notice.num)),
+          limitedNotices.map((notice) => notice.num),
           this.CACHE_TTL.NOTICES,
         ),
       ]);
@@ -111,12 +111,17 @@ export class CacheService implements OnModuleDestroy {
       const sortedNewNotices = [...newNotices].sort((a, b) => b.num - a.num);
 
       // 기존 캐시된 데이터 가져오기
-      const [existingNotices, existingNumsSet] = await Promise.all([
-        this.cacheManager.get<ITableData[]>(this.CACHE_KEYS.RECENT_NOTICES) ||
-          [],
-        this.cacheManager.get<Set<number>>(this.CACHE_KEYS.NEW_NOTICES_SET) ||
-          new Set(),
-      ]);
+      const existingNotices =
+        (await this.cacheManager.get<ITableData[]>(
+          this.CACHE_KEYS.RECENT_NOTICES,
+        )) || [];
+      const existingNumsArray =
+        (await this.cacheManager.get<number[]>(
+          this.CACHE_KEYS.NEW_NOTICES_SET,
+        )) || [];
+
+      // 배열을 Set으로 변환
+      const existingNumsSet = new Set(existingNumsArray);
 
       // 새로운 항목들만 필터링 (기존에 없는 것들)
       const actuallyNewNotices = sortedNewNotices.filter(
@@ -136,8 +141,8 @@ export class CacheService implements OnModuleDestroy {
         .sort((a, b) => b.num - a.num)
         .slice(0, this.MAX_CACHE_SIZE);
 
-      // 업데이트된 num 집합 생성
-      const updatedNumsSet = new Set(finalNotices.map((notice) => notice.num));
+      // 업데이트된 num 배열 생성
+      const updatedNumsArray = finalNotices.map((notice) => notice.num);
 
       // Redis에 업데이트된 데이터 저장
       await Promise.all([
@@ -148,7 +153,7 @@ export class CacheService implements OnModuleDestroy {
         ),
         this.cacheManager.set(
           this.CACHE_KEYS.NEW_NOTICES_SET,
-          updatedNumsSet,
+          updatedNumsArray,
           this.CACHE_TTL.NOTICES,
         ),
         this.updateCacheInfo({
@@ -185,10 +190,13 @@ export class CacheService implements OnModuleDestroy {
         return [];
       }
 
-      const existingNumsSet =
-        (await this.cacheManager.get<Set<number>>(
+      const existingNumsArray =
+        (await this.cacheManager.get<number[]>(
           this.CACHE_KEYS.NEW_NOTICES_SET,
-        )) || new Set();
+        )) || [];
+
+      // 배열을 Set으로 변환
+      const existingNumsSet = new Set(existingNumsArray);
 
       const newNotices = crawledData.filter(
         (item) => !existingNumsSet.has(item.num),
