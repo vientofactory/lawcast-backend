@@ -33,15 +33,12 @@ import appConfig from './config/app.config';
       useFactory: (configService: ConfigService) => {
         const redisUrl = configService.get<string>('redis.url');
         const keyPrefix = configService.get<string>('redis.keyPrefix');
-        const ttl = configService.get<number>('redis.ttl') * 1000;
-
         return {
           stores: [
             createKeyv(redisUrl, {
               namespace: keyPrefix,
             }),
           ],
-          ttl,
         };
       },
     }),
