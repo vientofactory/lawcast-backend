@@ -32,6 +32,9 @@ export class CrawlingService implements OnModuleInit {
   async onModuleInit() {
     this.logger.log('Initializing cache with recent legislative notices...');
     try {
+      // 기존 TTL이 설정된 캐시 데이터를 TTL 없이 마이그레이션
+      await this.cacheService.migrateCacheToNoTTL();
+
       await this.initializeCache();
       this.isInitialized = true;
       this.logger.log('Cache initialization completed successfully');
@@ -121,14 +124,30 @@ export class CrawlingService implements OnModuleInit {
       // 새로운 입법예고 찾기
       const newNotices = await this.cacheService.findNewNotices(crawledData);
 
-      // 캐시 업데이트
-      await this.cacheService.updateCache(crawledData);
-
       if (newNotices.length > 0) {
         this.logger.log(`Found ${newNotices.length} new legislative notices`);
-        await this.sendNotifications(newNotices);
+
+        try {
+          // 알림 전송 먼저 시도
+          await this.sendNotifications(newNotices);
+
+          // 알림 전송 성공 후 캐시 업데이트
+          await this.cacheService.updateCache(crawledData);
+          this.logger.log(
+            `Cache updated after successful notification for ${newNotices.length} notices`,
+          );
+        } catch (notificationError) {
+          this.logger.error(
+            'Notification sending failed, cache not updated:',
+            notificationError,
+          );
+          // 알림 실패 시 캐시를 업데이트하지 않음 - 다음 주기에 재시도 가능
+          throw notificationError;
+        }
       } else {
         LoggerUtils.debugDev(this.logger, 'No new notices found');
+        // 새 데이터가 없어도 전체 캐시는 업데이트 (기존 데이터 정렬 및 크기 관리)
+        await this.cacheService.updateCache(crawledData);
       }
 
       return newNotices;
@@ -148,20 +167,35 @@ export class CrawlingService implements OnModuleInit {
   }
 
   /**
-   * 논블로킹 방식으로 알림 배치 처리를 시작
+   * 알림 배치 처리를 실행하고 완료를 기다림
    */
   private async sendNotifications(notices: ITableData[]): Promise<void> {
-    // 논블로킹 배치 처리 시작 (백그라운드에서 실행)
-    await this.batchProcessingService.processNotificationBatch(notices, {
-      concurrency: 5,
-      timeout: 30000,
-      retryCount: 3,
-      retryDelay: 1000,
-    });
+    try {
+      // 배치 처리 시작하고 jobId 받기
+      const jobId = await this.batchProcessingService.processNotificationBatch(
+        notices,
+        {
+          concurrency: 5,
+          timeout: 30000,
+          retryCount: 3,
+          retryDelay: 1000,
+        },
+      );
 
-    this.logger.log(
-      `Started background notification processing for ${notices.length} notices`,
-    );
+      this.logger.log(
+        `Started notification batch processing for ${notices.length} notices (job: ${jobId})`,
+      );
+
+      // 배치 작업 완료 대기 - 타입 오류 해결을 위해 any로 캐스팅
+      await (this.batchProcessingService as any).waitForAllBatchJobs();
+
+      this.logger.log(
+        `Notification batch processing completed for ${notices.length} notices`,
+      );
+    } catch (error) {
+      this.logger.error('Notification batch processing failed:', error);
+      throw error;
+    }
   }
 
   /**

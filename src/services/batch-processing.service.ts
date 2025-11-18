@@ -106,7 +106,7 @@ export class BatchProcessingService implements OnApplicationShutdown {
   async processNotificationBatch(
     notices: ITableData[],
     options: BatchProcessingOptions = {},
-  ): Promise<void> {
+  ): Promise<string> {
     // 종료 중인 경우 새로운 작업 거부
     if (this.isShuttingDown) {
       this.logger.warn(
@@ -138,17 +138,16 @@ export class BatchProcessingService implements OnApplicationShutdown {
         );
       })
       .catch((error) => {
-        this.logger.error('Notification batch processing failed:', error);
+        this.logger.error('Batch processing error:', error);
       })
       .finally(() => {
         this.jobQueue.delete(jobId);
+        LoggerUtils.logDev(this.logger, `Batch job ${jobId} cleaned up`);
       });
 
-    // 즉시 반환 (논블로킹)
-    LoggerUtils.logDev(
-      this.logger,
-      `Notification batch job ${jobId} started in background`,
-    );
+    LoggerUtils.logDev(this.logger, `Notification batch job ${jobId} started`);
+
+    return jobId;
   }
 
   /**
