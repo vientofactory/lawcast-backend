@@ -10,16 +10,29 @@ export class CronJobsService {
   constructor(private readonly webhookCleanupService: WebhookCleanupService) {}
 
   /**
+   * 공통 로깅 헬퍼 메서드
+   */
+  private async executeWithLogging(
+    taskName: string,
+    task: () => Promise<void>,
+  ): Promise<void> {
+    try {
+      this.logger.log(`Starting scheduled ${taskName}...`);
+      await task();
+      this.logger.log(`Completed scheduled ${taskName}.`);
+    } catch (error) {
+      this.logger.error(`Scheduled ${taskName} failed:`, error);
+    }
+  }
+
+  /**
    * 매일 자정에 웹훅 정리 수행
    */
   @Cron(APP_CONSTANTS.CRON.EXPRESSIONS.WEBHOOK_CLEANUP)
   async handleWebhookCleanup(): Promise<void> {
-    try {
-      this.logger.log('Starting scheduled webhook cleanup...');
-      await this.webhookCleanupService.intelligentWebhookCleanup();
-    } catch (error) {
-      this.logger.error('Scheduled webhook cleanup failed:', error);
-    }
+    await this.executeWithLogging('webhook cleanup', () =>
+      this.webhookCleanupService.intelligentWebhookCleanup(),
+    );
   }
 
   /**
@@ -27,12 +40,9 @@ export class CronJobsService {
    */
   @Cron(APP_CONSTANTS.CRON.EXPRESSIONS.WEBHOOK_OPTIMIZATION)
   async handleWebhookOptimization(): Promise<void> {
-    try {
-      this.logger.log('Starting scheduled webhook optimization...');
-      await this.webhookCleanupService.weeklySystemOptimization();
-    } catch (error) {
-      this.logger.error('Scheduled webhook optimization failed:', error);
-    }
+    await this.executeWithLogging('webhook optimization', () =>
+      this.webhookCleanupService.weeklySystemOptimization(),
+    );
   }
 
   /**
@@ -40,10 +50,8 @@ export class CronJobsService {
    */
   @Cron(APP_CONSTANTS.CRON.EXPRESSIONS.SYSTEM_MONITORING)
   async handleSystemMonitoring(): Promise<void> {
-    try {
-      await this.webhookCleanupService.realTimeSystemMonitoring();
-    } catch (error) {
-      this.logger.error('Scheduled system monitoring failed:', error);
-    }
+    await this.executeWithLogging('system monitoring', () =>
+      this.webhookCleanupService.realTimeSystemMonitoring(),
+    );
   }
 }
