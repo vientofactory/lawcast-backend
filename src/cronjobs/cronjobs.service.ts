@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { WebhookCleanupService } from '../services/webhook-cleanup.service';
 import { CrawlingService } from '../services/crawling.service';
 import { APP_CONSTANTS } from '../config/app.config';
+import { LoggerUtils } from 'src/utils/logger.utils';
 
 @Injectable()
 export class CronJobsService {
@@ -21,9 +22,9 @@ export class CronJobsService {
     task: () => Promise<void>,
   ): Promise<void> {
     try {
-      this.logger.log(`Starting scheduled ${taskName}...`);
+      LoggerUtils.debugDev(this.logger, `Starting scheduled ${taskName}...`);
       await task();
-      this.logger.log(`Completed scheduled ${taskName}.`);
+      LoggerUtils.debugDev(this.logger, `Completed scheduled ${taskName}.`);
     } catch (error) {
       this.logger.error(`Scheduled ${taskName} failed:`, error);
     }
