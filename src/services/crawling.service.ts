@@ -179,15 +179,26 @@ export class CrawlingService implements OnModuleInit {
    */
   private async sendNotifications(notices: ITableData[]): Promise<void> {
     try {
+      // 대량 알림의 경우 배치 크기 제한 적용
+      const options: any = {
+        concurrency: 5,
+        timeout: 30000,
+        retryCount: 3,
+        retryDelay: 1000,
+      };
+
+      // 50개 이상의 알림이 있는 경우 배치 크기 제한 적용
+      if (notices.length > 50) {
+        options.batchSize = 50;
+        this.logger.log(
+          `Large notification batch detected (${notices.length} notices), applying batch size limit of 50`,
+        );
+      }
+
       // 배치 처리 시작하고 jobId 받기
       const jobId = await this.batchProcessingService.processNotificationBatch(
         notices,
-        {
-          concurrency: 5,
-          timeout: 30000,
-          retryCount: 3,
-          retryDelay: 1000,
-        },
+        options,
       );
 
       this.logger.log(

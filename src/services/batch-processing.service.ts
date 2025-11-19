@@ -22,6 +22,7 @@ export interface BatchProcessingOptions {
   timeout?: number;
   retryCount?: number;
   retryDelay?: number;
+  batchSize?: number;
 }
 
 @Injectable()
@@ -30,7 +31,7 @@ export class BatchProcessingService implements OnApplicationShutdown {
   private readonly jobQueue = new Map<string, Promise<any>>();
   private readonly activeTimeouts = new Set<NodeJS.Timeout>();
   private isShuttingDown = false;
-  private readonly shutdownTimeout = 25000; // 25초 (main.ts의 30초보다 짧게)
+  private readonly shutdownTimeout = 25000;
 
   constructor(
     private webhookService: WebhookService,
@@ -55,8 +56,56 @@ export class BatchProcessingService implements OnApplicationShutdown {
       timeout = 30000,
       retryCount = 3,
       retryDelay = 1000,
+      batchSize,
     } = options;
 
+    const results: BatchJobResult<T>[] = [];
+
+    // batchSize가 지정된 경우 전체 작업을 배치 크기로 나누어 순차적으로 처리
+    if (batchSize && jobs.length > batchSize) {
+      const jobBatches = this.chunkArray(jobs, batchSize);
+
+      for (const jobBatch of jobBatches) {
+        LoggerUtils.logDev(
+          this.logger,
+          `Processing batch of ${jobBatch.length} jobs (${results.length}/${jobs.length} completed)`,
+        );
+
+        const batchResults = await this.processBatch(
+          jobBatch,
+          concurrency,
+          timeout,
+          retryCount,
+          retryDelay,
+        );
+        results.push(...batchResults);
+      }
+    } else {
+      // batchSize가 없거나 작업 수가 batchSize 이하인 경우 기존 로직 사용
+      results.push(
+        ...(await this.processBatch(
+          jobs,
+          concurrency,
+          timeout,
+          retryCount,
+          retryDelay,
+        )),
+      );
+    }
+
+    return results;
+  }
+
+  /**
+   * 단일 배치를 concurrency로 나누어 병렬 처리
+   */
+  private async processBatch<T>(
+    jobs: Array<() => Promise<T>>,
+    concurrency: number,
+    timeout: number,
+    retryCount: number,
+    retryDelay: number,
+  ): Promise<BatchJobResult<T>[]> {
     const results: BatchJobResult<T>[] = [];
     const chunks = this.chunkArray(jobs, concurrency);
 
