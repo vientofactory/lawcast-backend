@@ -246,16 +246,23 @@ export class BatchProcessingService implements OnApplicationShutdown {
         (result) => !result.success && !result.shouldDelete,
       );
 
-      // 영구적으로 실패한 웹훅들은 비활성화
+      // 영구적으로 실패한 웹훅들은 첫 번째 실패에서 즉시 비활성화
       if (permanentFailures.length > 0) {
         const permanentFailureIds = permanentFailures.map(
           (result) => result.webhookId,
         );
 
-        // 각 웹훅을 개별적으로 비활성화
+        // 각 웹훅을 개별적으로 즉시 비활성화 (재시도 없음)
         for (const webhookId of permanentFailureIds) {
           try {
             await this.webhookService.remove(webhookId);
+            // NotificationService에서 실패 플래그 제거
+            this.notificationService.clearPermanentFailureFlag(webhookId);
+
+            LoggerUtils.debugDev(
+              this.logger,
+              `Webhook ${webhookId} immediately deactivated after first failure for notice: ${notice.subject}`,
+            );
           } catch (error) {
             this.logger.error(
               `Failed to deactivate webhook ${webhookId}:`,
@@ -264,8 +271,9 @@ export class BatchProcessingService implements OnApplicationShutdown {
           }
         }
 
-        this.logger.log(
-          `Deactivated ${permanentFailures.length} permanently failed webhooks for notice: ${notice.subject}`,
+        LoggerUtils.debugDev(
+          this.logger,
+          `Immediately deactivated ${permanentFailures.length} webhooks that failed on first attempt`,
         );
       }
 

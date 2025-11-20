@@ -7,6 +7,7 @@ import { type ITableData } from 'pal-crawl';
 import { Webhook } from '../entities/webhook.entity';
 import { APP_CONSTANTS } from '../config/app.config';
 import { CacheService } from './cache.service';
+import { LoggerUtils } from 'src/utils/logger.utils';
 
 @Injectable()
 export class NotificationService {
@@ -18,9 +19,10 @@ export class NotificationService {
     WEBHOOK: (webhookId: number) => `rate_limit:webhook:${webhookId}`,
   };
 
-  constructor(private cacheService: CacheService) {
-    // 주기적인 레이트 리밋 정리 작업은 WebhookCleanupService에서 수행
-  }
+  // 영구적으로 실패한 웹훅들을 추적하여 중복 시도 방지
+  private readonly permanentlyFailedWebhooks = new Set<number>();
+
+  constructor(private cacheService: CacheService) {}
 
   async sendDiscordNotification(
     notice: ITableData,
@@ -58,7 +60,6 @@ export class NotificationService {
     }>
   > {
     const embed = this.createNotificationEmbed(notice);
-    const failedWebhooks = new Set<number>();
     const results: Array<{
       webhookId: number;
       success: boolean;
@@ -68,12 +69,13 @@ export class NotificationService {
 
     // Discord 레이트 리밋을 준수하며 순차적으로 처리
     for (const webhook of webhooks) {
-      // 이미 같은 배치에서 실패한 웹훅은 건너뜀
-      if (failedWebhooks.has(webhook.id)) {
+      // 이미 영구적으로 실패한 웹훅은 건너뛰기
+      if (this.permanentlyFailedWebhooks.has(webhook.id)) {
         results.push({
           webhookId: webhook.id,
           success: false,
           shouldDelete: true,
+          error: new Error('Webhook already marked as permanently failed'),
         });
         continue;
       }
@@ -90,18 +92,22 @@ export class NotificationService {
         // 성공 시 마지막 전송 시간 기록
         await this.updateRateLimitTimestamp(webhook.id);
 
+        // 성공한 경우 실패 목록에서 제거
+        this.permanentlyFailedWebhooks.delete(webhook.id);
+
         results.push({ webhookId: webhook.id, success: true });
       } catch (error) {
         const shouldDelete = this.shouldDeleteWebhook(error);
 
         if (shouldDelete) {
-          // 영구 실패한 웹훅은 같은 배치에서 더 이상 시도하지 않음
-          failedWebhooks.add(webhook.id);
-          this.logger.warn(
-            `Webhook ${webhook.id} permanently failed (404/401/403) - will be deactivated`,
+          // 영구 실패 시 즉시 실패 목록에 추가하여 향후 재시도 방지
+          this.permanentlyFailedWebhooks.add(webhook.id);
+
+          LoggerUtils.debugDev(
+            this.logger,
+            `Webhook ${webhook.id} permanently failed on first attempt (${error.response?.status || 'unknown'}) - marked for immediate deactivation`,
           );
         } else {
-          // 일시적 실패는 디버그 레벨로 로깅
           this.logger.debug(
             `Webhook ${webhook.id} temporarily failed: ${error.message}`,
           );
@@ -401,5 +407,22 @@ export class NotificationService {
       );
       // Redis 실패 시에도 계속 진행 (메모리 기반 폴백은 제거)
     }
+  }
+
+  /**
+   * 웹훅이 삭제될 때 실패 목록에서 제거
+   */
+  clearPermanentFailureFlag(webhookId: number): void {
+    this.permanentlyFailedWebhooks.delete(webhookId);
+    this.logger.debug(
+      `Cleared permanent failure flag for webhook ${webhookId}`,
+    );
+  }
+
+  /**
+   * 영구적으로 실패한 웹훅 목록 반환 (디버깅/모니터링용)
+   */
+  getPermanentlyFailedWebhooks(): number[] {
+    return Array.from(this.permanentlyFailedWebhooks);
   }
 }

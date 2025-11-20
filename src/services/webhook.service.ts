@@ -13,7 +13,7 @@ export class WebhookService {
   async create(webhookData: { url: string }): Promise<Webhook> {
     const normalizedUrl = this.normalizeWebhookUrl(webhookData.url);
 
-    // 중복 확인 및 자동 복원 (soft delete된 것이 있다면 재활성화)
+    // 중복 확인 및 soft delete된 웹훅 복원
     const existingWebhook = await this.webhookRepository.findOne({
       where: { url: normalizedUrl },
     });
@@ -24,7 +24,7 @@ export class WebhookService {
         existingWebhook.updatedAt = new Date();
         return this.webhookRepository.save(existingWebhook);
       }
-      return existingWebhook; // 이미 활성화된 상태
+      return existingWebhook;
     }
 
     // 새로운 웹훅 생성
