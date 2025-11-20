@@ -53,6 +53,12 @@ export const APP_CONSTANTS = {
       NEW_NOTICES_SET: 'new_notices_set',
     },
   },
+  BATCH: {
+    CONCURRENCY: 10,
+    TIMEOUT: 30000,
+    RETRY_COUNT: 3,
+    RETRY_DELAY: 1000,
+  },
   DISCORD: {
     WEBHOOK: {
       URL_MAX_LENGTH: 500,

@@ -3,6 +3,9 @@ import { type ITableData } from 'pal-crawl';
 import { WebhookService } from './webhook.service';
 import { NotificationService } from './notification.service';
 import { LoggerUtils } from '../utils/logger.utils';
+import { APP_CONSTANTS } from 'src/config/app.config';
+
+const { BATCH } = APP_CONSTANTS;
 
 export interface BatchJobResult<T = any> {
   success: boolean;
@@ -52,10 +55,10 @@ export class BatchProcessingService implements OnApplicationShutdown {
     }
 
     const {
-      concurrency = 10,
-      timeout = 30000,
-      retryCount = 3,
-      retryDelay = 1000,
+      concurrency = BATCH.CONCURRENCY,
+      timeout = BATCH.TIMEOUT,
+      retryCount = BATCH.RETRY_COUNT,
+      retryDelay = BATCH.RETRY_DELAY,
       batchSize,
     } = options;
 
