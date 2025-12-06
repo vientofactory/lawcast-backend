@@ -8,8 +8,7 @@ export class WebhookCleanupService {
   constructor(private readonly webhookService: WebhookService) {}
 
   /**
-   * 매일 자정에 웹훅 정리 수행
-   * 시스템 효율성을 자동으로 평가하고 필요시 정리 실행
+   * Cleanup webhooks based on intelligent analysis of system state
    */
   async intelligentWebhookCleanup(): Promise<void> {
     try {
@@ -73,9 +72,9 @@ export class WebhookCleanupService {
   }
 
   /**
-   * 매일 새벽 2시에 심층 시스템 최적화 수행
+   * System optimization task
    */
-  async weeklySystemOptimization(): Promise<void> {
+  async runSystemOptimization(): Promise<void> {
     try {
       this.logger.log('Starting weekly system optimization...');
 
@@ -115,7 +114,7 @@ export class WebhookCleanupService {
   }
 
   /**
-   * 매시간 실시간 시스템 모니터링 및 자가 치유
+   * Monitor system in real-time and take immediate actions if needed
    */
   async realTimeSystemMonitoring(): Promise<void> {
     try {

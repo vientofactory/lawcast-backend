@@ -14,9 +14,10 @@ export class RecaptchaService {
   async verifyToken(token: string, remoteIp?: string): Promise<boolean> {
     const secretKey = this.configService.get<string>('recaptcha.secretKey');
 
+    // If no secret key is configured, skip verification
     if (!secretKey) {
       this.logger.warn('reCAPTCHA secret key not configured');
-      return true; // 개발 환경에서는 통과
+      return true;
     }
 
     if (!token) {
@@ -47,6 +48,7 @@ export class RecaptchaService {
       return success;
     } catch (error) {
       this.logger.error('reCAPTCHA verification failed:', error);
+      // 예외 발생 시 거부 우선(default deny)
       return false;
     }
   }

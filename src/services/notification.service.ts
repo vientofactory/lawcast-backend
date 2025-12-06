@@ -7,7 +7,7 @@ import { type ITableData } from 'pal-crawl';
 import { Webhook } from '../entities/webhook.entity';
 import { APP_CONSTANTS } from '../config/app.config';
 import { CacheService } from './cache.service';
-import { LoggerUtils } from 'src/utils/logger.utils';
+import { LoggerUtils } from '../utils/logger.utils';
 
 @Injectable()
 export class NotificationService {

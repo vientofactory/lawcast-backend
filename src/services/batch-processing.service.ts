@@ -3,7 +3,7 @@ import { type ITableData } from 'pal-crawl';
 import { WebhookService } from './webhook.service';
 import { NotificationService } from './notification.service';
 import { LoggerUtils } from '../utils/logger.utils';
-import { APP_CONSTANTS } from 'src/config/app.config';
+import { APP_CONSTANTS } from '../config/app.config';
 
 const { BATCH } = APP_CONSTANTS;
 

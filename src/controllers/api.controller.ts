@@ -75,9 +75,7 @@ export class ApiController {
       }
 
       // 웹훅 생성
-      await this.webhookService.create({
-        url: createWebhookDto.url,
-      });
+      await this.webhookService.create(createWebhookDto.url);
 
       return ApiResponseUtils.webhookSuccess(testResult);
     } catch (error) {

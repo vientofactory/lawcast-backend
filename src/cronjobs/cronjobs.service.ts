@@ -3,7 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { WebhookCleanupService } from '../services/webhook-cleanup.service';
 import { CrawlingService } from '../services/crawling.service';
 import { APP_CONSTANTS } from '../config/app.config';
-import { LoggerUtils } from 'src/utils/logger.utils';
+import { LoggerUtils } from '../utils/logger.utils';
 
 @Injectable()
 export class CronJobsService {
@@ -15,7 +15,7 @@ export class CronJobsService {
   ) {}
 
   /**
-   * 공통 실행 메서드
+   * 로깅을 위한 공통 실행 래퍼
    */
   private async execute(
     taskName: string,
@@ -46,7 +46,7 @@ export class CronJobsService {
   @Cron(APP_CONSTANTS.CRON.EXPRESSIONS.WEBHOOK_OPTIMIZATION)
   async handleWebhookOptimization(): Promise<void> {
     await this.execute('webhook optimization', () =>
-      this.webhookCleanupService.weeklySystemOptimization(),
+      this.webhookCleanupService.runSystemOptimization(),
     );
   }
 

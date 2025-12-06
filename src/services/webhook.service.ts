@@ -10,8 +10,8 @@ export class WebhookService {
     private webhookRepository: Repository<Webhook>,
   ) {}
 
-  async create(webhookData: { url: string }): Promise<Webhook> {
-    const normalizedUrl = this.normalizeWebhookUrl(webhookData.url);
+  async create(url: string): Promise<Webhook> {
+    const normalizedUrl = this.normalizeWebhookUrl(url);
 
     // 중복 확인 및 soft delete된 웹훅 복원
     const existingWebhook = await this.webhookRepository.findOne({

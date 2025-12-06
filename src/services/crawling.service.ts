@@ -1,7 +1,10 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PalCrawl, type ITableData, type PalCrawlConfig } from 'pal-crawl';
 import { CacheService } from './cache.service';
-import { BatchProcessingService } from './batch-processing.service';
+import {
+  BatchProcessingOptions,
+  BatchProcessingService,
+} from './batch-processing.service';
 import { APP_CONSTANTS } from '../config/app.config';
 import { LoggerUtils } from '../utils/logger.utils';
 import { type CacheInfo } from '../types/cache.types';
@@ -180,7 +183,7 @@ export class CrawlingService implements OnModuleInit {
   private async sendNotifications(notices: ITableData[]): Promise<void> {
     try {
       // 대량 알림의 경우 배치 크기 제한 적용
-      const options: any = {
+      const options: BatchProcessingOptions = {
         concurrency: 5,
         timeout: 30000,
         retryCount: 3,
